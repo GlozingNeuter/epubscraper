@@ -10,11 +10,11 @@ from tqdm import tqdm
 parser = argparse.ArgumentParser()
 parser.add_argument("path", type=str, help="Path to epub to scrap")
 parser.add_argument("-s", "--selector", dest="selector", type=str, help="Choose a CSS selector for footnotes", default=".footnote")
-parser.add_argument("-o", "--output", dest="output", type=str, help="Path to output file", default="./outputs/output.csv")
+parser.add_argument("-o", "--output", dest="output", type=str, help="Path to output file", default="./outputs/")
 args = parser.parse_args()
 
 path = Path(args.path)
-output_path = Path(args.output)
+
 selector = args.selector
 
 def follow_backlink(csv_path):
@@ -25,15 +25,18 @@ def follow_backlink(csv_path):
 
 def scrape_epub(path):
     book = epub.read_epub(path)
+    title = book.get_metadata("DC", "title")[0]
+    author = book.get_metadata("DC", "creator")[0][0]
+    output_path = Path(args.output + title[0] + ".csv")
     with open(output_path, "w", newline="") as csvfile:
-        title = book.get_metadata("DC", "title")
+        
         writer = csv.writer(csvfile, delimiter="|", quoting=csv.QUOTE_MINIMAL)
         writer.writerow(["title", "note", "item_name", "backlink", "path", "context"])
         for item in tqdm(book.get_items()):
             if item.get_type() == ebooklib.ITEM_DOCUMENT:
                 item_name = item.get_name()
                 item_content = item.get_body_content()    
-                html_soup = BeautifulSoup(item_content)
+                html_soup = BeautifulSoup(item_content, features="lxml")
                 for data in html_soup.select(selector):
                     note = data.get_text()
                     try: 
@@ -50,11 +53,19 @@ def scrape_epub(path):
                             context_item = book.get_item_with_href(link[0])
                             context = BeautifulSoup(context_item.get_body_content()).find(id = link[1]).parent
 
+                    except AttributeError:
+                        backlink = "Error"
+                        context = "Missing Backlink"
+                        print("Note not found")
 
                     except TypeError:
+                        backlink = "Error"
+                        context = "Missing Backlink"
                         print("Error: No backlink in note")
+
+                    writer.writerow([title, author, note, item_name, backlink, path, context])
                     
-                    writer.writerow([title, note, item_name, backlink, path, context])
+                    
     
 scrape_epub(path)
 #follow_backlink("outputs/output.csv")
